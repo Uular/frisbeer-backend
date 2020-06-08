@@ -59,18 +59,19 @@ def update_elo():
 
     Player.objects.all().update(elo=1500, season_best=0)
 
-    season = 2017
+    season = None
 
     for game in games:
         if not game.can_score():
             continue
         # Perform elo decay before first game of each season
-        if game.date.year == 2018 and season == 2017:
+        if season is None:
+            season = game.season
+        elif game.season and game.season != season:
+            logging.debug(f'Doing elo decay between seasons {season.name} and {game.season.name}')
             _elo_decay()
-            season = 2018
-        elif game.date.year == 2019 and season == 2018:
-            _elo_decay()
-            season = 2019
+            season = game.season
+
         team1 = [r.player for r in list(game.gameplayerrelation_set.filter(team=1))]
         team2 = [r.player for r in list(game.gameplayerrelation_set.filter(team=2))]
         team2_pregame_elo = calculate_team_elo(team2)
@@ -94,8 +95,8 @@ def update_elo():
                 player.season_best = player.elo
             player.save()
 
-    # First game not even played yet -> decay
-    if season == 2017:
+    # New season has begun, but no games yet played -> decay
+    if season != Season.current():
         _elo_decay()
 
 
@@ -105,8 +106,8 @@ def update_score():
     season = Season.current()
     games = Game.objects.filter(season_id=season.id, state=Game.APPROVED)
 
-    if not games:
-        Player.objects.all().update(score=0)
+    # Reset all scores to 0
+    Player.objects.all().update(score=0)
 
     players = {}
     for game in games:
@@ -178,43 +179,44 @@ def calculate_ranks():
     :return: None
     """
     logging.info("Calculating new ranks")
-    players = Player.objects.all()
-    ranks = list(Rank.objects.all())
 
+    ranks = list(Rank.objects.all())
     rank_distribution = OrderedDict()
     step = 6 / (len(ranks) - 2)
     for i in range(len(ranks) - 2):
         rank_distribution[-3 + i * step] = ranks[i]
 
-    player_list = []
     season = Season.current()
+    players = Player.objects.all()
+    players.update(rank=None)
+    ranked_players_list = []
     for player in players:
         s1 = player.gameplayerrelation_set.filter(team=1, game__season_id=season.id) \
                    .aggregate(Sum('game__team1_score'))["game__team1_score__sum"] or 0
         s2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
                    .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
         if s1 + s2 > 4:
-            player_list.append(player)
+            ranked_players_list.append(player)
 
-    if not player_list:
+    if not ranked_players_list:
         logging.debug("No players with four round victories")
         for player in players:
             player.rank = None
             player.save()
         return
 
-    scores = [player.score for player in player_list]
+    scores = [player.score for player in ranked_players_list]
     if len(set(scores)) == 1:
-        logging.debug("Only one player {} with rank".format(player_list[0]))
-        z_scores = [0.0 for i in range(len(player_list))]
+        logging.debug("Only one player {} with rank".format(ranked_players_list[0]))
+        z_scores = [0.0 for i in range(len(ranked_players_list))]
     else:
         z_scores = zscore(scores)
-        logging.debug("Players: {}".format(player_list))
+        logging.debug("Players: {}".format(ranked_players_list))
         logging.debug("Z_scores: {}".format(z_scores))
 
-    for i in range(len(player_list)):
+    for i in range(len(ranked_players_list)):
         player_z_score = z_scores[i]
-        player = player_list[i]
+        player = ranked_players_list[i]
         rank = None
         for required_z_score in rank_distribution.keys():
             if player_z_score > required_z_score:
