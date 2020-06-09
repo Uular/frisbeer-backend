@@ -180,6 +180,11 @@ class Game(models.Model):
             self.team2_score,
         )
 
+    def can_create_teams(self):
+        return self.state == Game.READY \
+            and self.players.count() == 6 \
+            and self.players.filter(gameplayerrelation__team=0).count() == 6
+
     def can_score(self):
         return self.state >= Game.APPROVED and (self.team1_score == 2 or self.team2_score == 2) \
                and self.players.count() == 6 \
