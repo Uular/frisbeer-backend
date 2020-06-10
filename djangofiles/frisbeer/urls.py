@@ -10,3 +10,5 @@ urlpatterns = [
     url(r'teams', views.TeamCreateView.as_view(), name="team_select"),
     # url(r'scoreboard', views.ScoreListView.as_view(), name="player-list")
 ]
+
+app_name = 'frisbeer'

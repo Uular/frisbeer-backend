@@ -135,7 +135,7 @@ class Game(models.Model):
     date = models.DateTimeField(default=now)
     name = models.CharField(max_length=250, blank=True, null=True)
     description = models.TextField(max_length=2500, blank=True, null=True)
-    location = models.ForeignKey('Location', blank=True, null=True)
+    location = models.ForeignKey('Location', blank=True, null=True, on_delete=models.SET_NULL)
 
     teams = models.ManyToManyField(Team, related_name='games', through='GameTeamRelation')
 

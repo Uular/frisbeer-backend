@@ -7,7 +7,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.views.generic import FormView, ListView
 from rest_framework import viewsets, mixins
-from rest_framework.decorators import detail_route
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, APIException, PermissionDenied
 from rest_framework.viewsets import GenericViewSet
 
@@ -48,7 +48,7 @@ class GameViewSet(viewsets.ModelViewSet):
     queryset = Game.objects.all()
     serializer_class = GameSerializer
 
-    @detail_route(methods=['post'])
+    @action(detail=True, methods=['post'])
     def add_player(self, request, pk=None):
         game = get_object_or_404(Game, pk=pk)
         body = request.data
@@ -63,7 +63,7 @@ class GameViewSet(viewsets.ModelViewSet):
                 raise APIException(detail="Game is already full", code=400)
         return redirect(reverse("frisbeer:games-detail", args=[pk]))
 
-    @detail_route(methods=['post'])
+    @action(detail=True, methods=['post'])
     def remove_player(self, request, pk=None):
         game = get_object_or_404(Game, pk=pk)
         body = request.data
@@ -71,7 +71,7 @@ class GameViewSet(viewsets.ModelViewSet):
         get_object_or_404(GamePlayerRelation, game=game, player=player).delete()
         return redirect(reverse("frisbeer:games-detail", args=[pk]))
 
-    @detail_route(methods=['post'])
+    @action(detail=True, methods=['post'])
     def create_teams(self, request, pk=None):
         game = get_object_or_404(Game, pk=pk)
         if GamePlayerRelation.objects.filter(game=game).count() != 6:

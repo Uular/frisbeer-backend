@@ -4,19 +4,19 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-
-[packages]
-djangorestframework = "<3.7,>=3.6.0"
-scipy = "*"
-numpy = "*"
-coreapi = "*"
-django-cors-headers = "*"
-gunicorn = "*"
-psycopg2 = "*"
-Django = ">=1.11,<1.12"
 Pygments = "*"
 Markdown = "*"
 q = "*"
+
+[packages]
+djangorestframework = ">=3.11"
+scipy = ">=1.4.1"
+numpy = ">=1.17.3"
+coreapi = ">=2.3"
+django-cors-headers = "~=3.3.0"
+gunicorn = ">=20.0"
+psycopg2 = "~=2.8"
+Django = "~=3.0.1"
 
 [requires]
 python_version = "3.8"
