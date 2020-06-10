@@ -1,19 +1,15 @@
-FROM python:3-stretch
+FROM python:3.8
 
-COPY pip_requirements.txt /tmp/pip_requirements.txt
-
-RUN pip install --no-cache-dir -Ur /tmp/pip_requirements.txt
+RUN pip install pipenv
+COPY Pipfile* /tmp/
+RUN cd /tmp && pipenv lock --requirements > /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
 RUN mkdir /opt/frisbeer-backend
-
 RUN mkdir /var/static
 
 COPY djangofiles/ /opt/frisbeer-backend/
-
 COPY create_ranks.py /opt/frisbeer-backend/create_ranks.py
-
-COPY setup_test_database.py /opt/frisbeer-backend/setup_test_database.py
-
 COPY docker/start.sh /opt/frisbeer-backend/start.sh
 
 RUN chmod +x /opt/frisbeer-backend/start.sh
