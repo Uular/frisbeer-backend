@@ -3,6 +3,9 @@ from operator import itemgetter
 from math import exp
 from datetime import date
 
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
+from django.utils.translation import ugettext_lazy as _
 from django.utils.timezone import now
 from django.db import models
 
@@ -30,6 +33,26 @@ class Player(models.Model):
         return self.name
 
 
+class GameRules(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    min_players = models.IntegerField(default=6, validators=[MinValueValidator(0)])
+    max_players = models.IntegerField(default=6, validators=[MinValueValidator(0)])
+    min_rounds = models.IntegerField(default=2, validators=[MinValueValidator(0)])
+    max_rounds = models.IntegerField(default=3, validators=[MinValueValidator(0)])
+
+    class Meta:
+        verbose_name = 'Ruleset'
+
+    def clean(self):
+        if self.min_players > self.max_players:
+            self.max_players = self.min_players
+        if self.min_rounds > self.max_rounds:
+            self.max_rounds = self.min_rounds
+
+    def __str__(self):
+        return self.name
+
+
 class Season(models.Model):
     ALGORITHM_2017 = '2017'
     ALGORITHM_2018 = '2018'
@@ -44,6 +67,7 @@ class Season(models.Model):
     start_date = models.DateField(default=now)
     end_date = models.DateField(null=True, blank=True)
     score_algorithm = models.CharField(max_length=255, choices=ALGORITHM_CHOICES)
+    game_rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
         return self.name
@@ -129,7 +153,8 @@ class Game(models.Model):
                           (PLAYED, "Played"),
                           (APPROVED, "Approved"))
 
-    season = models.ForeignKey(Season, on_delete=models.SET_NULL, null=True)
+    season = models.ForeignKey(Season, null=True, blank=True, on_delete=models.SET_NULL)
+    rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.SET_NULL)
 
     players = models.ManyToManyField(Player, related_name='games', through='GamePlayerRelation')
     date = models.DateTimeField(default=now)
@@ -156,6 +181,10 @@ class Game(models.Model):
             return GameTeamRelation.objects.get(game=self, side=side).team
         except GameTeamRelation.DoesNotExist:
             return None
+
+    def clean(self):
+        if self.rules is None and (self.season is None or self.season.game_rules is None):
+            raise ValidationError({'rules': _('Rules or season with rules must be set')})
 
     @property
     def team1(self):
