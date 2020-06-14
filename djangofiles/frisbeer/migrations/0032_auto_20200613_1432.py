@@ -19,7 +19,7 @@ def set_frisbeer_rules(apps, schema_editor):
     Game = apps.get_model('frisbeer', 'Game')
 
     Season.objects.filter(game_rules__isnull=True).update(game_rules=frisbeer_rules)
-    Game.objects.filter(rules__isnull=True).update(rules=frisbeer_rules)
+    Game.objects.filter(rules__isnull=True, season__isnull=True).update(rules=frisbeer_rules)
 
 
 def unset_rules(apps, schem_editor):

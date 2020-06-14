@@ -1,7 +1,6 @@
 import logging
 
 from collections import OrderedDict, defaultdict
-from typing import List
 
 from scipy.stats import zscore
 from django.contrib.auth.models import User
@@ -10,11 +9,10 @@ from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from rest_framework.authtoken.models import Token
 
-from server import settings
 from frisbeer.models import *
+from frisbeer.utils import *
 
 
-@receiver(m2m_changed, sender=Game.players.through)
 @receiver(m2m_changed, sender=Game.players.through)
 @receiver(post_save, sender=Game)
 def update_statistics(sender, instance, **kwargs):
@@ -28,17 +26,6 @@ def update_statistics(sender, instance, **kwargs):
     update_team_score()
 
 
-def calculate_elo_change(my_elo, opponent_elo, win):
-    if win:
-        actual_score = 1
-    else:
-        actual_score = 0
-    Ra = my_elo
-    Rb = opponent_elo
-    Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
-    return settings.ELO_K * (actual_score - Ea)
-
-
 def update_elo():
     """
     Calculate new elos for all players.
@@ -47,9 +34,6 @@ def update_elo():
     """
 
     logging.info("Updating elos (mabby)")
-
-    def calculate_team_elo(team):
-        return sum([player.elo for player in team]) / len(team)
 
     def _elo_decay():
         # Halves the distance from median elo for all players

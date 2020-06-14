@@ -1,6 +1,6 @@
 import itertools
 from operator import itemgetter
-from math import exp
+from math import exp, ceil
 from datetime import date
 
 from django.core.exceptions import ValidationError
@@ -8,6 +8,8 @@ from django.core.validators import MinValueValidator
 from django.utils.translation import ugettext_lazy as _
 from django.utils.timezone import now
 from django.db import models
+
+from frisbeer import utils
 
 
 class Rank(models.Model):
@@ -154,7 +156,7 @@ class Game(models.Model):
                           (APPROVED, "Approved"))
 
     season = models.ForeignKey(Season, null=True, blank=True, on_delete=models.SET_NULL)
-    rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.SET_NULL)
+    _rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.SET_NULL)
 
     players = models.ManyToManyField(Player, related_name='games', through='GamePlayerRelation')
     date = models.DateTimeField(default=now)
@@ -187,6 +189,10 @@ class Game(models.Model):
             raise ValidationError({'rules': _('Rules or season with rules must be set')})
 
     @property
+    def rules(self):
+        return self._rules or self.season.game_rules
+
+    @property
     def team1(self):
         return self._team(1)
 
@@ -210,35 +216,28 @@ class Game(models.Model):
         )
 
     def can_create_teams(self):
+        player_count = self.players.count()
         return self.state == Game.READY \
-            and self.players.count() == 6 \
-            and self.players.filter(gameplayerrelation__team=0).count() == 6
+            and self.rules.min_players <= player_count <= self.rules.max_players \
+            and player_count == self.players.filter(gameplayerrelation__team=0).count()
 
     def can_score(self):
-        return self.state >= Game.APPROVED and (self.team1_score == 2 or self.team2_score == 2) \
-               and self.players.count() == 6 \
-               and self.players.filter(gameplayerrelation__team=1).count() == 3 \
-               and self.players.filter(gameplayerrelation__team=2).count() == 3
+        players_count = self.players.count()
+        players_per_team = ceil(players_count / 2)
+        rounds_played = self.team1_score + self.team2_score
+        return self.state >= Game.APPROVED \
+               and self.rules.min_rounds <= rounds_played <= self.rules.max_rounds \
+               and self.rules.min_players <= players_count <= self.rules.max_players \
+               and self.players.filter(gameplayerrelation__team=0).count() == 0 \
+               and self.players.filter(gameplayerrelation__team=1).count() <= players_per_team \
+               and self.players.filter(gameplayerrelation__team=2).count() <= players_per_team
 
     def create_teams(self):
-        def calculate_team_elo(team):
-            return int(sum([player.elo for player in team]) / len(team))
-
-        elo_list = []
-        players = set(self.players.all())
-        possibilities = itertools.combinations(players, 3)
-        for possibility in possibilities:
-            team1 = possibility
-            team2 = players - set(team1)
-            elo1 = calculate_team_elo(team1)
-            elo2 = calculate_team_elo(team2)
-            elo_list.append((abs(elo1 - elo2), team1, team2))
-        ideal_teams = sorted(elo_list, key=itemgetter(0))[0]
+        ideal_teams = utils.create_equal_teams(set(self.players.all()))
         self.gameplayerrelation_set \
             .filter(player__id__in=[player.id for player in ideal_teams[1]]).update(team=GamePlayerRelation.Team1)
         self.gameplayerrelation_set \
             .filter(player__id__in=[player.id for player in ideal_teams[2]]).update(team=GamePlayerRelation.Team2)
-        print(ideal_teams[0])
         self.save()
 
 

@@ -14,6 +14,7 @@ from rest_framework.viewsets import GenericViewSet
 from frisbeer.models import *
 from frisbeer.serializers import RankSerializer, PlayerSerializer, PlayerInGameSerializer, GameSerializer, \
     LocationSerializer, TeamSerializer
+from frisbeer.utils import create_equal_teams, calculate_team_elo
 
 
 class RankViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin, GenericViewSet):
@@ -74,8 +75,8 @@ class GameViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def create_teams(self, request, pk=None):
         game = get_object_or_404(Game, pk=pk)
-        if GamePlayerRelation.objects.filter(game=game).count() != 6:
-            raise APIException("Game needs 6 players before teams can be created", code=400)
+        if not game.can_create_teams():
+            raise APIException("Game has the wrong amount of players", code=400)
         force = request.data.get("re_create", False)
         game.create_teams()
         game.state = Game.READY
@@ -95,9 +96,8 @@ class LocationViewSet(viewsets.ModelViewSet):
 
 
 def validate_players(value):
-    logging.debug("Validating players")
-    if len(value) != 6 or len(set(value)) != 6:
-        raise ValidationError("Select exactly six different players")
+    if len(value) <= 1 or len(set(value)) <= 1:
+        raise ValidationError("Select 2 players or more")
 
 
 class EqualTeamForm(forms.Form):
@@ -114,26 +114,14 @@ class TeamCreateView(FormView):
     form_class = EqualTeamForm
 
     def form_valid(self, form):
-        def calculate_team_elo(team):
-            return int(sum([player.elo for player in team]) / len(team))
-
-        elo_list = []
         players = set(Player.objects.filter(id__in=form.cleaned_data["players"]))
-        possibilities = itertools.combinations(players, 3)
-        for possibility in possibilities:
-            team1 = possibility
-            team2 = players - set(team1)
-            elo1 = calculate_team_elo(team1)
-            elo2 = calculate_team_elo(team2)
-            elo_list.append((abs(elo1 - elo2), team1, team2))
-        ideal_teams = sorted(elo_list, key=itemgetter(0))[0]
+        ideal_teams = create_equal_teams(players)
         teams = {
             "team1": ideal_teams[1],
             "team1_elo": calculate_team_elo(ideal_teams[1]),
             "team2": ideal_teams[2],
             "team2_elo": calculate_team_elo(ideal_teams[2]),
         }
-
         return render(self.request, 'frisbeer/team_select_form.html', {"form": form, "teams": teams})
 
 
