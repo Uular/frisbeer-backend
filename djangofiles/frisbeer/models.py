@@ -104,6 +104,7 @@ class SeasonRules(models.Model):
         else:
             return score_elo
 
+
 class Season(models.Model):
 
     name = models.CharField(max_length=255, unique=True)

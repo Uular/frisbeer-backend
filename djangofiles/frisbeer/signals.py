@@ -175,15 +175,29 @@ def calculate_ranks():
     players.update(rank=None)
     ranked_players_list = []
     for player in players:
-        s1 = player.gameplayerrelation_set.filter(team=1, game__season_id=season.id) \
-                   .aggregate(Sum('game__team1_score'))["game__team1_score__sum"] or 0
-        s2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
-                   .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
-        if s1 + s2 > 4:
+        stat = season.rules.rank_statistic
+        if stat == PlayerStatistic.GAMES_PLAYED:
+            value = player.gameplayerrelation_set.filter(game__season_id=season.id).count()
+        elif stat == PlayerStatistic.GAMES_WON:
+            gw1 = player.gameplayerrelation_set.filter(team=1,
+                   game__season_id=season.id,
+                   game__team1_score__gt=F('game__team2_score')).count()
+            gw2 = player.gameplayerrelation_set.filter(team=2,
+                   game__season_id=season.id,
+                   game__team2_score__gt=F('game__team1_score'))
+            value = gw1 + gw2
+        elif stat == PlayerStatistic.ROUNDS_WON:
+            rw1 = player.gameplayerrelation_set.filter(team=1, game__season_id=season.id) \
+                       .aggregate(Sum('game__team1_score'))["game__team1_score__sum"] or 0
+            rw2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
+                       .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
+            value = rw1 + rw2
+
+        if value >= season.rules.rank_min_value:
             ranked_players_list.append(player)
 
     if not ranked_players_list:
-        logging.debug("No players with four round victories")
+        logging.debug("No players with rank criteria")
         for player in players:
             player.rank = None
             player.save()
