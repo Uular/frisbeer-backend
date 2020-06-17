@@ -217,8 +217,7 @@ class Game(models.Model):
 
     def can_create_teams(self):
         player_count = self.players.count()
-        return self.state == Game.READY \
-            and self.rules.min_players <= player_count <= self.rules.max_players \
+        return self.rules.min_players <= player_count <= self.rules.max_players \
             and player_count == self.players.filter(gameplayerrelation__team=0).count()
 
     def can_score(self):
