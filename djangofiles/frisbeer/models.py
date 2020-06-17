@@ -55,21 +55,63 @@ class GameRules(models.Model):
         return self.name
 
 
+class ScoreAlgorithm(models.TextChoices):
+    S_2017 = '2017', _('Season 2017')
+    S_2018 = '2018', _('Season 2018')
+    ELO = 'elo', _('Elo')
+    TOP_ELO = 'top_elo', _('Best elo')
+
+
+class PlayerStatistic(models.TextChoices):
+    ROUNDS_PLAYED = 'RP', _('Rounds played')
+    ROUNDS_WON = 'RW', _('Rounds won')
+    GAMES_PLAYED = 'GP', _('Games played')
+    GAMES_WON = 'GW', _('Games won')
+
+
+class SeasonRules(models.Model):
+    name = models.CharField(max_length=100)
+    elo_decay = models.BooleanField(default=True)
+    score_algorithm = models.CharField(max_length=16, choices=ScoreAlgorithm.choices, default=ScoreAlgorithm.ELO)
+    rank_statistic = models.CharField(max_length=3, choices=PlayerStatistic.choices, default=PlayerStatistic.ROUNDS_WON)
+    rank_min_value = models.IntegerField(default=5)
+
+    def __str__(self):
+        return self.name or self.score_algorithm
+
+    @property
+    def algorithm(self):
+        def score_2017(games_played, rounds_played, rounds_won, *args, **kwargs):
+            win_rate = rounds_won / rounds_played if rounds_played != 0 else 0
+            return int(win_rate * (1 - exp(-games_played / 4)) * 1000)
+
+        def score_2018(games_played, rounds_played, rounds_won, *args, **kwargs):
+            win_rate = rounds_won / rounds_played if rounds_played != 0 else 0
+            return int(rounds_won + win_rate * (1 / (1 + exp(3 - games_played / 2.5))) * 1000)
+
+        def score_best_elo(player, *args, **kwargs):
+            return player.season_best
+
+        def score_elo(player, *args, **kwargs):
+            return player.elo
+
+        if self.score_algorithm == ScoreAlgorithm.S_2017:
+            return score_2017
+        elif self.score_algorithm == ScoreAlgorithm.S_2018:
+            return score_2018
+        elif self.score_algorithm == ScoreAlgorithm.TOP_ELO:
+            return score_best_elo
+        else:
+            return score_elo
+
 class Season(models.Model):
-    ALGORITHM_2017 = '2017'
-    ALGORITHM_2018 = '2018'
-    ALGORITHM_TOP_ELO = 'elo'
-    ALGORITHM_CHOICES = (
-        (ALGORITHM_2017, '2017'),
-        (ALGORITHM_2018, '2018'),
-        (ALGORITHM_TOP_ELO, 'Best elo')
-    )
 
     name = models.CharField(max_length=255, unique=True)
     start_date = models.DateField(default=now)
     end_date = models.DateField(null=True, blank=True)
-    score_algorithm = models.CharField(max_length=255, choices=ALGORITHM_CHOICES)
-    game_rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.SET_NULL)
+    rules = models.ForeignKey(SeasonRules, null=True, on_delete=models.PROTECT)
+    score_algorithm = models.CharField(max_length=255, choices=ScoreAlgorithm.choices)
+    game_rules = models.ForeignKey(GameRules, null=True, blank=True, on_delete=models.PROTECT)
 
     def __str__(self):
         return self.name
@@ -79,23 +121,7 @@ class Season(models.Model):
         return Season.objects.filter(start_date__lte=date.today()).order_by('-start_date').first()
 
     def score(self, *args, **kwargs):
-        def score_2017(games_played, rounds_played, rounds_won, *args, **kwargs):
-            win_rate = rounds_won / rounds_played if rounds_played != 0 else 0
-            return int(win_rate * (1 - exp(-games_played / 4)) * 1000)
-
-        def score_2018(games_played, rounds_played, rounds_won, *args, **kwargs):
-            win_rate = rounds_won / rounds_played if rounds_played != 0 else 0
-            return int(rounds_won + win_rate * (1 / (1 + exp(3 - games_played / 2.5))) * 1000)
-
-        def score_elo(player, *args, **kwargs):
-            return player.elo
-
-        if self.score_algorithm == Season.ALGORITHM_2017:
-            return score_2017(*args, **kwargs)
-        elif self.score_algorithm == Season.ALGORITHM_2018:
-            return score_2018(*args, **kwargs)
-        else:
-            return score_elo(*args, **kwargs)
+        return self.rules.algorithm(*args, **kwargs)
 
 
 class Team(models.Model):
