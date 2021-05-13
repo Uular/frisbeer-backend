@@ -23,7 +23,9 @@ class TeamAdmin(admin.ModelAdmin):
 
 admin.site.register(Player)
 admin.site.register(Game, GameAdmin)
+admin.site.register(GameRules)
 admin.site.register(Location)
 admin.site.register(Rank)
 admin.site.register(Season)
+admin.site.register(SeasonRules)
 admin.site.register(Team, TeamAdmin)

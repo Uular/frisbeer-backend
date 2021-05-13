@@ -1,7 +1,6 @@
 import logging
 
 from collections import OrderedDict, defaultdict
-from typing import List
 
 from scipy.stats import zscore
 from django.contrib.auth.models import User
@@ -10,11 +9,10 @@ from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from rest_framework.authtoken.models import Token
 
-from server import settings
 from frisbeer.models import *
+from frisbeer.utils import *
 
 
-@receiver(m2m_changed, sender=Game.players.through)
 @receiver(m2m_changed, sender=Game.players.through)
 @receiver(post_save, sender=Game)
 def update_statistics(sender, instance, **kwargs):
@@ -28,17 +26,6 @@ def update_statistics(sender, instance, **kwargs):
     update_team_score()
 
 
-def calculate_elo_change(my_elo, opponent_elo, win):
-    if win:
-        actual_score = 1
-    else:
-        actual_score = 0
-    Ra = my_elo
-    Rb = opponent_elo
-    Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
-    return settings.ELO_K * (actual_score - Ea)
-
-
 def update_elo():
     """
     Calculate new elos for all players.
@@ -47,9 +34,6 @@ def update_elo():
     """
 
     logging.info("Updating elos (mabby)")
-
-    def calculate_team_elo(team):
-        return sum([player.elo for player in team]) / len(team)
 
     def _elo_decay():
         # Halves the distance from median elo for all players
@@ -190,16 +174,31 @@ def calculate_ranks():
     players = Player.objects.all()
     players.update(rank=None)
     ranked_players_list = []
+    stat = season.rules.rank_statistic
     for player in players:
-        s1 = player.gameplayerrelation_set.filter(team=1, game__season_id=season.id) \
-                   .aggregate(Sum('game__team1_score'))["game__team1_score__sum"] or 0
-        s2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
-                   .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
-        if s1 + s2 > 4:
+        logging.info(f'Calculating ranks for player {player} with stat {stat}')
+        if stat == PlayerStatistic.GAMES_PLAYED:
+            value = player.gameplayerrelation_set.filter(game__season_id=season.id).count()
+        elif stat == PlayerStatistic.GAMES_WON:
+            gw1 = player.gameplayerrelation_set.filter(team=1,
+                   game__season_id=season.id,
+                   game__team1_score__gt=F('game__team2_score')).count()
+            gw2 = player.gameplayerrelation_set.filter(team=2,
+                   game__season_id=season.id,
+                   game__team2_score__gt=F('game__team1_score'))
+            value = gw1 + gw2
+        elif stat == PlayerStatistic.ROUNDS_WON:
+            rw1 = player.gameplayerrelation_set.filter(team=1, game__season_id=season.id) \
+                       .aggregate(Sum('game__team1_score'))["game__team1_score__sum"] or 0
+            rw2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
+                       .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
+            value = rw1 + rw2
+        logging.info(f'Value is {value}, comparing to {season.rules.rank_min_value}')
+        if value >= season.rules.rank_min_value:
             ranked_players_list.append(player)
 
     if not ranked_players_list:
-        logging.debug("No players with four round victories")
+        logging.debug("No players with rank criteria")
         for player in players:
             player.rank = None
             player.save()

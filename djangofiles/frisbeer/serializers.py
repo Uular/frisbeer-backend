@@ -2,7 +2,7 @@ from django.templatetags.static import static
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from frisbeer.models import Rank, Player, GamePlayerRelation, Game, Location, Team, GameTeamRelation
+from frisbeer.models import Rank, Player, GamePlayerRelation, Game, Location, Team, GameTeamRelation, Season, GameRules
 
 
 class LocationSerializer(serializers.ModelSerializer):
@@ -84,14 +84,22 @@ class TeamInGameSerializer(serializers.ModelSerializer):
         fields = ('name', 'side')
 
 
+class GameRulesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GameRules
+        fields = '__all__'
+
+
 class GameSerializer(serializers.ModelSerializer):
+    rules = GameRulesSerializer(read_only=True)
     location_repr = LocationSerializer(source='location', read_only=True)
     players = PlayerInGameSerializer(many=True, source='gameplayerrelation_set', partial=True, required=False)
     teams = TeamInGameSerializer(many=True, source='gameteamrelation_set', partial=True, required=False)
 
     class Meta:
         model = Game
-        fields = '__all__'
+        exclude = ['_rules']
+
 
     def validate(self, attrs):
         admin = self.context['request'].user.is_staff
@@ -115,25 +123,20 @@ class GameSerializer(serializers.ModelSerializer):
                 raise ValidationError("Only admins can roll back game state")
             if state >= Game.APPROVED and not admin:
                 raise ValidationError("Only admins can approve games and edit approved games")
-            if state >= Game.READY and len(players) != 6:
+            if state >= Game.READY and not (game.rules.min_players <= len(players) <= game.rules.max_players):
                 raise ValidationError("A game without exactly six players must be in pending state")
-
-            if state >= Game.READY and len(team1) != 3 and len(team2) != 3:
+            if state >= Game.READY and (len(team1) + len(team2)) != len(players):
                 raise ValidationError("Game that doesn't have teams must be in Pending state (0). "
                                       "Create teams manually or with create_teams endpoint")
 
             if state >= Game.PLAYED:
-                if game.team1_score + game.team2_score > 3:
-                    raise ValidationError("Too many round wins. Frisbeer is played best of three")
-                if game.state >= Game.READY and game.players.count() != 6:
-                    raise ValidationError("The game needs 6 players to be ready")
-                if state >= Game.PLAYED and team1_score != 2 and team2_score != 2:
-                    raise ValidationError("One team needs two round wins to win the game")
-                if team1_score != 2 and team2_score != 2:
+                if game.team1_score + game.team2_score > game.rules.max_rounds:
+                    raise ValidationError("Too many round wins.")
+                if team1_score != game.rules.min_rounds and team2_score != game.rules.min_rounds:
                     raise ValidationError("One team needs two round wins to win the game")
 
-        if players and len(players) > 6:
-            raise ValidationError("Game can't have more than 6 players")
+        if players and len(players) > game.rules.max_players:
+            raise ValidationError(f"Game can't have more than {game.rules.max_players} players")
 
         return attrs
 
