@@ -60,7 +60,7 @@ class GameViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             relation = GamePlayerRelation(game=game, player=player)
             relation.save()
-            if GamePlayerRelation.objects.filter(game=game).count() > 6:
+            if GamePlayerRelation.objects.filter(game=game).count() > game.rules.max_players:
                 raise APIException(detail="Game is already full", code=400)
         return redirect(reverse("frisbeer:games-detail", args=[pk]))
 

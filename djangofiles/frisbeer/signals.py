@@ -174,8 +174,9 @@ def calculate_ranks():
     players = Player.objects.all()
     players.update(rank=None)
     ranked_players_list = []
+    stat = season.rules.rank_statistic
     for player in players:
-        stat = season.rules.rank_statistic
+        logging.info(f'Calculating ranks for player {player} with stat {stat}')
         if stat == PlayerStatistic.GAMES_PLAYED:
             value = player.gameplayerrelation_set.filter(game__season_id=season.id).count()
         elif stat == PlayerStatistic.GAMES_WON:
@@ -192,7 +193,7 @@ def calculate_ranks():
             rw2 = player.gameplayerrelation_set.filter(team=2, game__season_id=season.id) \
                        .aggregate(Sum('game__team2_score'))["game__team2_score__sum"] or 0
             value = rw1 + rw2
-
+        logging.info(f'Value is {value}, comparing to {season.rules.rank_min_value}')
         if value >= season.rules.rank_min_value:
             ranked_players_list.append(player)
 
